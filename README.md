@@ -16,7 +16,7 @@ uv run pytest
 ## Structure
 
 - `db.py` — SQLite data access (schema, validation, CRUD).
-- `app.py` — Streamlit UI in a master-detail layout: search + table on the left, form panel on the right. Selecting a row opens the edit form; with no selection the panel shows the new-contact form. The table key changes with the search query and after every write, so a row index always refers to the list currently shown.
+- `app.py` — Streamlit UI: search + table on the left, form panel on the right. Each row has Edit and Delete buttons (`st.column_config.ButtonColumn`). Edit loads the contact into the panel by id; Delete opens a confirmation dialog (`st.dialog`). With nothing being edited the panel shows the new-contact form.
 - `desktop.py` — desktop launcher: starts Streamlit as a subprocess on a free port on `127.0.0.1`, waits for the health check, opens a pywebview window and stops the server when the window closes.
 - `test_db.py` — tests for `db.py`.
 - `.streamlit/config.toml` — production settings: developer toolbar and Deploy button hidden (`toolbarMode = "minimal"`), no tracebacks in the UI (`showErrorDetails = "none"`, details go to the console), file watcher off. Streamlit reads this file from the working directory; `desktop.py` starts the subprocess in the project directory.
@@ -25,7 +25,7 @@ uv run pytest
 flowchart LR
     U[User] --> W[desktop.py<br/>pywebview window]
     U -.->|browser| UI
-    W -->|http://127.0.0.1:port| UI[app.py<br/>search + table / form panel]
+    W -->|http://127.0.0.1:port| UI[app.py<br/>table with Edit/Delete buttons<br/>+ form panel]
     UI -->|ContactData| V[validate_contact<br/>normalize_contact]
     V --> DB[db.py<br/>add / search / update / delete]
     DB --> S[(contacts.db<br/>SQLite)]

@@ -84,6 +84,16 @@ def add_contact(conn: sqlite3.Connection, data: ContactData) -> int:
     return new_id
 
 
+def get_contact(conn: sqlite3.Connection, contact_id: int) -> Contact:
+    """Return the contact with `contact_id`."""
+    row: tuple[int, str, str, str, str] | None = conn.execute(
+        "SELECT id, name, phone, email, address FROM contacts WHERE id = ?", (contact_id,)
+    ).fetchone()
+    if row is None:
+        raise ContactNotFoundError(f"Contact not found: id={contact_id}")
+    return Contact(*row)
+
+
 def search_contacts(conn: sqlite3.Connection, query: str) -> list[Contact]:
     """Return contacts whose name, phone, email or address contains `query`, sorted by name.
 

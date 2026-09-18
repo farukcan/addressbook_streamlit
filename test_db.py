@@ -6,11 +6,13 @@ from pathlib import Path
 import pytest
 
 from db import (
+    Contact,
     ContactData,
     ContactNotFoundError,
     add_contact,
     connect,
     delete_contact,
+    get_contact,
     normalize_contact,
     search_contacts,
     update_contact,
@@ -62,7 +64,15 @@ def test_delete_contact(conn: sqlite3.Connection) -> None:
     assert search_contacts(conn, "") == []
 
 
+def test_get_contact(conn: sqlite3.Connection) -> None:
+    contact_id: int = add_contact(conn, ALICE)
+    stored: Contact = get_contact(conn, contact_id)
+    assert (stored.id, stored.name, stored.address) == (contact_id, "Alice", "London")
+
+
 def test_missing_id_raises(conn: sqlite3.Connection) -> None:
+    with pytest.raises(ContactNotFoundError):
+        get_contact(conn, 999)
     with pytest.raises(ContactNotFoundError):
         update_contact(conn, 999, ALICE)
     with pytest.raises(ContactNotFoundError):
