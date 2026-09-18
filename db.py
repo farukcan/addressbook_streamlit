@@ -55,9 +55,9 @@ def validate_contact(data: ContactData) -> list[str]:
     """Return human-readable validation errors; an empty list means valid."""
     errors: list[str] = []
     if not data.name.strip():
-        errors.append("İsim zorunlu.")
+        errors.append("Name is required.")
     if data.email.strip() and not EMAIL_PATTERN.match(data.email.strip()):
-        errors.append(f"Geçersiz e-posta: {data.email}")
+        errors.append(f"Invalid email: {data.email}")
     return errors
 
 

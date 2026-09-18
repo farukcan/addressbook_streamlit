@@ -1,45 +1,46 @@
-# Adres Defteri (Streamlit + SQLite)
+# Address Book (Streamlit + SQLite)
 
-Basit contact CRUD uygulaması: listele/ara, ekle, düzenle, sil. Veri `contacts.db` (SQLite) dosyasında, ilk çalıştırmada otomatik oluşur.
+A simple contact CRUD app: search, add, edit and delete contacts. Data lives in a local SQLite file (`contacts.db`), created on first run.
 
-## Çalıştırma
+## Run
 
 ```bash
 git clone https://github.com/farukcan/addressbook_streamlit.git
 cd addressbook_streamlit
 uv sync
-uv run streamlit run app.py   # tarayıcıda
-uv run python desktop.py      # native pencerede (pywebview)
+uv run streamlit run app.py   # in the browser
+uv run python desktop.py      # in a native window (pywebview)
 uv run pytest
 ```
 
-## Yapı
+## Structure
 
 - `db.py` — SQLite data access (schema, validation, CRUD).
-- `app.py` — Streamlit UI; her rerun'da yeni connection açar, işlem sonrası `st.rerun()` ile tüm sekmeleri tazeler.
-- `desktop.py` — desktop launcher: Streamlit'i `127.0.0.1` üzerinde boş bir port'ta subprocess olarak başlatır, health check sonrası pywebview penceresinde açar; pencere kapanınca server'ı durdurur.
-- `test_db.py` — `db.py` testleri.
+- `app.py` — Streamlit UI in a master-detail layout: search + table on the left, form panel on the right. Selecting a row opens the edit form; with no selection the panel shows the new-contact form. The table key changes with the search query and after every write, so a row index always refers to the list currently shown.
+- `desktop.py` — desktop launcher: starts Streamlit as a subprocess on a free port on `127.0.0.1`, waits for the health check, opens a pywebview window and stops the server when the window closes.
+- `test_db.py` — tests for `db.py`.
+- `.streamlit/config.toml` — production settings: developer toolbar and Deploy button hidden (`toolbarMode = "minimal"`), no tracebacks in the UI (`showErrorDetails = "none"`, details go to the console), file watcher off. Streamlit reads this file from the working directory; `desktop.py` starts the subprocess in the project directory.
 
 ```mermaid
 flowchart LR
-    U[Kullanıcı] --> W[desktop.py<br/>pywebview window]
-    U -.->|tarayıcı| UI
-    W -->|http://127.0.0.1:port| UI[app.py<br/>Streamlit tabs:<br/>Liste / Ekle / Düzenle-Sil]
+    U[User] --> W[desktop.py<br/>pywebview window]
+    U -.->|browser| UI
+    W -->|http://127.0.0.1:port| UI[app.py<br/>search + table / form panel]
     UI -->|ContactData| V[validate_contact<br/>normalize_contact]
     V --> DB[db.py<br/>add / search / update / delete]
     DB --> S[(contacts.db<br/>SQLite)]
     DB -->|list of Contact| UI
 ```
 
-## Güvenlik
+## Security
 
-- Uygulamada authentication yok. `.streamlit/config.toml` server'ı `localhost`'a bind eder; `desktop.py` de `127.0.0.1` kullanır. Ağa açmayın.
-- `contacts.db` kişisel veri içerir ve `.gitignore`'dadır; secret'lar için `.streamlit/secrets.toml` / `.env` de ignore edilir.
+- The app has no authentication. `.streamlit/config.toml` binds the server to `localhost` and `desktop.py` uses `127.0.0.1`. Do not expose it to a network.
+- `contacts.db` holds personal data and is git-ignored, as are `.env` and `.streamlit/secrets.toml` for secrets.
 
-## Bilinen kısıt
+## Known limitation
 
-Arama SQLite `LIKE` kullanır; case-insensitive eşleşme yalnızca ASCII harflerde çalışır (`istanbul` ≠ `İstanbul`).
+Search uses SQLite `LIKE`, whose case-insensitive matching only works for ASCII letters (`café` does not match `CAFÉ`).
 
 ## License
 
-MIT — bkz. [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).

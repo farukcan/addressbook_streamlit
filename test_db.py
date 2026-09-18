@@ -17,8 +17,8 @@ from db import (
     validate_contact,
 )
 
-ALICE: ContactData = ContactData(name="Alice", phone="555 111", email="alice@example.com", address="İstanbul")
-BOB: ContactData = ContactData(name="bob", phone="555 222", email="bob@example.com", address="Ankara")
+ALICE: ContactData = ContactData(name="Alice", phone="555 111", email="alice@example.com", address="London")
+BOB: ContactData = ContactData(name="bob", phone="555 222", email="bob@example.com", address="Paris")
 
 
 @pytest.fixture
@@ -37,7 +37,7 @@ def test_add_and_list_sorted_by_name(conn: sqlite3.Connection) -> None:
 def test_search_matches_any_field(conn: sqlite3.Connection) -> None:
     add_contact(conn, ALICE)
     add_contact(conn, BOB)
-    assert [c.name for c in search_contacts(conn, "ankara")] == ["bob"]
+    assert [c.name for c in search_contacts(conn, "paris")] == ["bob"]
     assert [c.name for c in search_contacts(conn, "111")] == ["Alice"]
     assert search_contacts(conn, "nobody") == []
 
