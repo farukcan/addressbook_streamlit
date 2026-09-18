@@ -1,0 +1,6 @@
+[server]
+# Bind to this machine only; the app has no authentication.
+address = "localhost"
+
+[browser]
+gatherUsageStats = false
