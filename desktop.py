@@ -16,7 +16,7 @@ import webview
 APP_PATH: Path = Path(__file__).parent / "app.py"
 HOST: str = "127.0.0.1"
 STARTUP_TIMEOUT_SECONDS: float = 30.0
-WINDOW_TITLE: str = "Adres Defteri"
+WINDOW_TITLE: str = "Address Book"
 
 
 def find_free_port(host: str) -> int:
@@ -36,7 +36,9 @@ def start_server(app_path: Path, host: str, port: int) -> subprocess.Popen[bytes
             "--server.address", host,
             "--server.port", str(port),
             "--browser.gatherUsageStats", "false",
-        ]
+        ],
+        # Streamlit reads .streamlit/config.toml from the working directory.
+        cwd=app_path.parent,
     )
 
 

@@ -1,6 +1,15 @@
 [server]
 # Bind to this machine only; the app has no authentication.
 address = "localhost"
+# Production: no code reloading.
+fileWatcherType = "none"
+
+[client]
+# Hide developer UI (Deploy, rerun, clear cache, settings menu).
+toolbarMode = "minimal"
+# Show generic error messages in the UI; full tracebacks go to the console only.
+showErrorDetails = "none"
+showErrorLinks = false
 
 [browser]
 gatherUsageStats = false
