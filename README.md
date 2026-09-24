@@ -1,6 +1,14 @@
+<img src="assets/logo-128.png" width="96" alt="Address Book logo">
+
 # Address Book (Streamlit + SQLite)
 
 A simple contact CRUD app: search, add, edit and delete contacts. Data lives in a local SQLite file (`contacts.db`), created on first run. An optional SSE MCP server exposes the same contacts to AI agents.
+
+![The contacts tab: search and table on the left, the new-contact form on the right](assets/screenshot-contacts.png)
+
+![The MCP tab: host, port and token settings, and the configuration to copy for each client](assets/screenshot-mcp.png)
+
+The screenshots show sample data, not a real address book.
 
 ## Run
 
@@ -13,6 +21,8 @@ uv run python desktop.py      # in a native window (pywebview)
 uv run pytest
 ```
 
+[FEATURES.md](FEATURES.md) lists what the app does today as a walk-through for testing it by hand.
+
 ## Structure
 
 - `db.py` — SQLite data access (schema, validation, CRUD).
@@ -21,6 +31,7 @@ uv run pytest
 - `mcp_server.py` — SSE MCP server exposing `list_contacts`, `get_contact`, `create_contact`, `update_contact` and `delete_contact`. It runs in a background thread of the Streamlit process, started and stopped from the MCP tab; every tool call opens its own SQLite connection.
 - `live_update.py` — makes open browser sessions rerun after a write from the MCP server, so an agent's change shows up in the UI at once. Streamlit has no public API for a rerun triggered outside a script run, so this uses the runtime's session manager; `test_live_update.py` fails if an upgrade renames that private API.
 - `test_db.py`, `test_mcp_server.py`, `test_app.py`, `test_live_update.py` — tests, including an end-to-end run where an MCP client connects over SSE and manages contacts, and Streamlit `AppTest` runs of the UI.
+- `make_logo.py` — draws `assets/logo-512.png` and `assets/logo-128.png` procedurally with Pillow (no image files to maintain); the app uses the small one as its page icon.
 - `.streamlit/config.toml` — production settings: developer toolbar and Deploy button hidden (`toolbarMode = "minimal"`), no tracebacks in the UI (`showErrorDetails = "none"`, details go to the console), file watcher off. Streamlit reads this file from the working directory; `desktop.py` starts the subprocess in the project directory.
 
 ```mermaid
@@ -38,7 +49,7 @@ flowchart LR
 
 ## MCP server
 
-The MCP tab starts and stops an SSE MCP server and shows the client configuration to copy, for example:
+The MCP tab starts and stops an SSE MCP server and shows the configuration to copy for the Claude Code CLI, Cursor (`~/.cursor/mcp.json`), VS Code (`.vscode/mcp.json`), Windsurf (`~/.codeium/windsurf/mcp_config.json`) and other clients, since they differ in the file they read and in the key that carries the URL. With the Claude Code CLI, for example:
 
 ```bash
 claude mcp add --transport sse address-book http://127.0.0.1:8765/sse
