@@ -1,7 +1,8 @@
 """Desktop launcher: runs the Streamlit app on localhost and shows it in a native window.
 
 Run with: uv run python desktop.py
-Closing the window stops the Streamlit server.
+Closing the window stops the Streamlit server. Killing this process does not: the window's native
+event loop blocks Python's signal handling, so the server has to be stopped by hand afterwards.
 """
 
 import socket
