@@ -44,8 +44,14 @@ class Contact:
 
 
 def connect(db_path: Path) -> sqlite3.Connection:
-    """Open the database and make sure the schema exists."""
+    """Open the database in WAL mode and make sure the schema exists.
+
+    WAL lets the UI read while the MCP server thread writes.
+    """
     conn: sqlite3.Connection = sqlite3.connect(db_path)
+    mode: str = conn.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+    if mode.lower() != "wal":
+        raise sqlite3.DatabaseError(f"Could not enable WAL mode: journal_mode={mode} path={db_path}")
     conn.execute(SCHEMA)
     conn.commit()
     return conn

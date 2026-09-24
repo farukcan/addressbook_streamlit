@@ -5,6 +5,7 @@ Each table row has Edit and Delete buttons. Edit loads the contact into the pane
 Delete asks for confirmation in a dialog. When nothing is being edited the panel shows the new-contact form.
 """
 
+import secrets
 import sqlite3
 from contextlib import closing
 from dataclasses import asdict
@@ -12,7 +13,9 @@ from pathlib import Path
 
 import streamlit as st
 from streamlit.typing import ButtonColumnClickState
+from typing import TypedDict
 
+import mcp_server
 from db import (
     Contact,
     ContactData,
@@ -25,8 +28,10 @@ from db import (
     update_contact,
     validate_contact,
 )
+from mcp_server import RunningServer, ServerConfig
 
 DB_PATH: Path = Path(__file__).parent / "contacts.db"
+MCP_STATE_PATH: Path = Path(__file__).parent / "mcp_state.json"
 FLASH_KEY: str = "flash"
 EDITING_ID_KEY: str = "editing_id"
 PENDING_DELETE_KEY: str = "pending_delete_id"
@@ -34,12 +39,50 @@ EDIT_CLICK_KEY: str = "edit_click"
 DELETE_CLICK_KEY: str = "delete_click"
 ADD_PREFIX: str = "add"
 TABLE_HEIGHT_PX: int = 480
+MCP_DEFAULT_HOST: str = "127.0.0.1"
+MCP_DEFAULT_PORT: int = 8765
+MCP_TOKEN_KEY: str = "mcp_token"
+MCP_SETTINGS_KEY: str = "mcp_settings"
+LOCAL_HOSTS: frozenset[str] = frozenset({"127.0.0.1", "localhost", "::1"})
 EDIT_ICON: str = ":material/edit:"
 DELETE_ICON: str = ":material/delete:"
 
 
+class McpSettings(TypedDict):
+    """MCP tab inputs, kept outside the widget keys so they survive while the server runs."""
+
+    host: str
+    port: int
+    require_token: bool
+    token: str
+
+
+class McpHandle(TypedDict):
+    """The MCP server of this process, plus why an automatic start failed."""
+
+    running: RunningServer | None
+    start_error: str | None
+
+
+@st.cache_resource
+def mcp_handle() -> McpHandle:
+    """App-wide handle for the MCP server, built once per process and shared by every session.
+
+    A server the previous run left running is started again here, so closing the app without
+    stopping it resumes it on the next launch.
+    """
+    config: ServerConfig | None = mcp_server.load_state(MCP_STATE_PATH)
+    if config is None:
+        return McpHandle(running=None, start_error=None)
+    try:
+        return McpHandle(running=mcp_server.start_server(DB_PATH, config), start_error=None)
+    # Reported in the MCP tab: raising here would leave the whole app unusable.
+    except (OSError, RuntimeError, TimeoutError) as error:
+        return McpHandle(running=None, start_error=f"Could not restart the MCP server: {error}")
+
+
 def finish_change(message: str) -> None:
-    """After a DB write: queue a toast and rerun so every view shows fresh data."""
+    """Queue a toast and rerun so every view shows fresh data."""
     st.session_state[FLASH_KEY] = message
     st.rerun()
 
@@ -176,10 +219,139 @@ def confirm_delete(contact: Contact) -> None:
         st.rerun()
 
 
+def render_mcp_settings(handle: McpHandle) -> ServerConfig | None:
+    """Render the inputs and the Start button shown while the server is stopped.
+
+    Returns the configured settings, or None when the token field is on but empty.
+    """
+    settings: McpSettings = st.session_state[MCP_SETTINGS_KEY]
+    host: str = st.text_input(
+        "Host",
+        value=settings["host"],
+        key="mcp_host",
+        help="127.0.0.1 keeps the server on this machine. Use your LAN IP or 0.0.0.0 to accept "
+        "connections from your network.",
+    ).strip()
+    port: int = int(
+        st.number_input(
+            "Port", min_value=1, max_value=65535, value=settings["port"], step=1, key="mcp_port"
+        )
+    )
+    require_token: bool = st.checkbox(
+        "Require a bearer token", value=settings["require_token"], key="mcp_require_token"
+    )
+    token: str | None = None
+    if require_token:
+        token = st.text_input("Token", value=settings["token"], key=MCP_TOKEN_KEY).strip() or None
+    st.session_state[MCP_SETTINGS_KEY] = McpSettings(
+        host=host,
+        port=port,
+        require_token=require_token,
+        token=token if token is not None else settings["token"],
+    )
+    if not host:
+        st.error("Host must not be empty.")
+    if require_token and token is None:
+        st.error("The token must not be empty while a token is required.")
+    complete: bool = bool(host) and not (require_token and token is None)
+    if complete and host not in LOCAL_HOSTS and token is None:
+        st.warning(
+            "Without a token, anyone who can reach this address can read and change your contacts."
+        )
+    if not complete:
+        return None
+    config: ServerConfig = ServerConfig(host=host, port=port, token=token)
+    if st.button("Start server", type="primary"):
+        try:
+            handle["running"] = mcp_server.start_server(DB_PATH, config)
+        # Shown in the UI, which is configured to hide tracebacks.
+        except (OSError, RuntimeError, TimeoutError) as error:
+            st.error(str(error))
+            return config
+        # Remembered so the next launch brings the server back up.
+        mcp_server.save_state(MCP_STATE_PATH, config)
+        finish_change("MCP server started.")
+    return config
+
+
+def render_mcp_status(handle: McpHandle, running: RunningServer) -> None:
+    """Render the state of the running server and the Stop button."""
+    st.success(f"Running · {mcp_server.server_url(running.config)}")
+    if running.config.host not in LOCAL_HOSTS and running.config.token is None:
+        st.warning(
+            "Without a token, anyone who can reach this address can read and change your contacts."
+        )
+    if st.button("Stop server"):
+        try:
+            mcp_server.stop_server(running)
+        except TimeoutError as error:
+            st.error(str(error))
+        finally:
+            # Drop the handle even on a failed shutdown; keeping it would make Stop unusable.
+            handle["running"] = None
+            mcp_server.save_state(MCP_STATE_PATH, None)
+        finish_change("MCP server stopped.")
+
+
+def render_mcp_help(config: ServerConfig) -> None:
+    """Explain how to connect an AI agent to the server."""
+    st.subheader("Connect an agent")
+    st.caption("Add this SSE server to an MCP client, for example:")
+    st.code(mcp_server.client_config_json(config), language="json")
+    st.caption("Or with the Claude Code CLI:")
+    st.code(mcp_server.client_cli_command(config), language="bash")
+    st.caption(
+        "Tools: list_contacts, get_contact, create_contact, update_contact, delete_contact. "
+        "The server runs inside this app; it stops when the app exits and starts again with the "
+        "app unless you stop it here."
+    )
+    if config.host in mcp_server.WILDCARD_HOSTS:
+        st.caption("Bound to every interface: agents on other machines use this machine's address.")
+
+
+def initial_mcp_settings() -> McpSettings:
+    """Seed the MCP inputs from the remembered server, falling back to the defaults.
+
+    They are kept outside the widget keys so they survive while the server hides the inputs. The
+    token is generated once per session, so the field is never empty when it is switched on.
+    """
+    remembered: ServerConfig | None = mcp_server.load_state(MCP_STATE_PATH)
+    if remembered is None:
+        return McpSettings(
+            host=MCP_DEFAULT_HOST,
+            port=MCP_DEFAULT_PORT,
+            require_token=False,
+            token=secrets.token_urlsafe(24),
+        )
+    return McpSettings(
+        host=remembered.host,
+        port=remembered.port,
+        require_token=remembered.token is not None,
+        token=remembered.token if remembered.token is not None else secrets.token_urlsafe(24),
+    )
+
+
+def render_mcp_tab() -> None:
+    st.subheader("MCP server")
+    st.caption("Serve this address book over SSE so AI agents can read and manage it.")
+    handle: McpHandle = mcp_handle()
+    if handle["start_error"] is not None:
+        st.error(handle["start_error"])
+    running: RunningServer | None = handle["running"]
+    if running is not None:
+        render_mcp_status(handle, running)
+        render_mcp_help(running.config)
+        return
+    config: ServerConfig | None = render_mcp_settings(handle)
+    if config is not None:
+        render_mcp_help(config)
+
+
 def main() -> None:
     st.set_page_config(page_title="Address Book", page_icon="📇", layout="wide")
     st.title("📇 Address Book")
     st.session_state.setdefault(EDITING_ID_KEY, None)
+    st.session_state.setdefault(MCP_SETTINGS_KEY, initial_mcp_settings())
     if FLASH_KEY in st.session_state:
         st.toast(st.session_state.pop(FLASH_KEY), icon="✅")
     # Pop before opening so dismissing the dialog (X / Esc) does not reopen it on the next run.
@@ -189,15 +361,19 @@ def main() -> None:
     try:
         if pending_delete_id is not None:
             confirm_delete(get_contact(conn, pending_delete_id))
-        list_col, form_col = st.columns([3, 2], gap="large")
-        with list_col:
-            render_contact_list(conn)
-        with form_col, st.container(border=True):
-            editing_id: int | None = st.session_state[EDITING_ID_KEY]
-            if editing_id is None:
-                render_add(conn)
-            else:
-                render_edit(conn, get_contact(conn, editing_id))
+        contacts_tab, mcp_tab = st.tabs(["Contacts", "MCP"])
+        with contacts_tab:
+            list_col, form_col = st.columns([3, 2], gap="large")
+            with list_col:
+                render_contact_list(conn)
+            with form_col, st.container(border=True):
+                editing_id: int | None = st.session_state[EDITING_ID_KEY]
+                if editing_id is None:
+                    render_add(conn)
+                else:
+                    render_edit(conn, get_contact(conn, editing_id))
+        with mcp_tab:
+            render_mcp_tab()
     finally:
         conn.close()
 

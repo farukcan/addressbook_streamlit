@@ -12,11 +12,14 @@ dist/
 *.sqlite
 *.sqlite3
 *.db-journal
+*.db-wal
+*.db-shm
 
 # Secrets
 .env
 .env.*
 .streamlit/secrets.toml
+mcp_state.json
 
 # OS / editor
 .DS_Store
