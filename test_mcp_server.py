@@ -14,9 +14,11 @@ from mcp.server.transport_security import TransportSecuritySettings
 from db import ContactNotFoundError
 from mcp_server import (
     SHUTDOWN_TIMEOUT_SECONDS,
+    ClientSetup,
     ContactDict,
     client_cli_command,
     client_config_json,
+    client_setups,
     RunningServer,
     ServerConfig,
     create_contact,
@@ -220,3 +222,26 @@ def test_malformed_state_raises(tmp_path: Path) -> None:
     state_path.write_text('{"host": "127.0.0.1", "port": "8765", "token": null}', encoding="utf-8")
     with pytest.raises(ValueError, match="Malformed MCP server state"):
         load_state(state_path)
+
+
+def test_client_setups_cover_every_client() -> None:
+    config: ServerConfig = ServerConfig(host=HOST, port=8765, token=None)
+    setups: dict[str, ClientSetup] = client_setups(config)
+    assert list(setups) == ["Claude Code", "Cursor", "VS Code", "Windsurf", "Other"]
+
+    cursor: dict[str, Any] = json.loads(setups["Cursor"].snippet)["mcpServers"]["address-book"]
+    assert cursor == {"url": "http://127.0.0.1:8765/sse"}
+    vscode: dict[str, Any] = json.loads(setups["VS Code"].snippet)["servers"]["address-book"]
+    assert vscode == {"type": "sse", "url": "http://127.0.0.1:8765/sse"}
+    windsurf: dict[str, Any] = json.loads(setups["Windsurf"].snippet)["mcpServers"]["address-book"]
+    assert windsurf == {"serverUrl": "http://127.0.0.1:8765/sse"}
+    assert setups["Claude Code"].snippet.startswith("claude mcp add --transport sse")
+
+
+def test_client_setups_carry_the_token() -> None:
+    setups: dict[str, ClientSetup] = client_setups(ServerConfig(host=HOST, port=8765, token="s3cret"))
+    header: dict[str, str] = {"Authorization": "Bearer s3cret"}
+    assert json.loads(setups["Cursor"].snippet)["mcpServers"]["address-book"]["headers"] == header
+    assert json.loads(setups["VS Code"].snippet)["servers"]["address-book"]["headers"] == header
+    assert json.loads(setups["Windsurf"].snippet)["mcpServers"]["address-book"]["headers"] == header
+    assert '--header "Authorization: Bearer s3cret"' in setups["Claude Code"].snippet

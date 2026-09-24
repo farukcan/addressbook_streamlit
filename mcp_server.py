@@ -293,11 +293,25 @@ def server_url(config: ServerConfig) -> str:
     return f"http://{bracket_ipv6(host)}:{config.port}{SSE_PATH}"
 
 
+@dataclass(frozen=True)
+class ClientSetup:
+    """How one MCP client is pointed at this server."""
+
+    hint: str
+    language: str
+    snippet: str
+
+
+def entry_with_headers(entry: dict[str, object], token: str | None) -> dict[str, object]:
+    """Add the bearer header to a client's server entry when the server requires a token."""
+    if token is None:
+        return entry
+    return {**entry, "headers": {"Authorization": f"Bearer {token}"}}
+
+
 def client_config_json(config: ServerConfig) -> str:
     """Return the JSON snippet an MCP client needs to connect to this server."""
-    entry: dict[str, object] = {"url": server_url(config)}
-    if config.token is not None:
-        entry["headers"] = {"Authorization": f"Bearer {config.token}"}
+    entry: dict[str, object] = entry_with_headers({"url": server_url(config)}, config.token)
     return json.dumps({"mcpServers": {SERVER_NAME: entry}}, indent=2)
 
 
@@ -305,3 +319,45 @@ def client_cli_command(config: ServerConfig) -> str:
     """Return a Claude Code CLI command that registers this server."""
     header: str = "" if config.token is None else f' --header "Authorization: Bearer {config.token}"'
     return f"claude mcp add --transport sse {SERVER_NAME} {server_url(config)}{header}"
+
+
+def client_setups(config: ServerConfig) -> dict[str, ClientSetup]:
+    """Return how to register this server in each supported MCP client, keyed by client name.
+
+    The clients differ in the file they read and in the key that carries the URL, so each one
+    gets its own snippet rather than a single generic example.
+    """
+    url: str = server_url(config)
+    return {
+        "Claude Code": ClientSetup(
+            hint="Run this in a terminal",
+            language="bash",
+            snippet=client_cli_command(config),
+        ),
+        "Cursor": ClientSetup(
+            hint="~/.cursor/mcp.json, or .cursor/mcp.json inside a project",
+            language="json",
+            snippet=client_config_json(config),
+        ),
+        "VS Code": ClientSetup(
+            hint=".vscode/mcp.json in the workspace",
+            language="json",
+            snippet=json.dumps(
+                {"servers": {SERVER_NAME: entry_with_headers({"type": "sse", "url": url}, config.token)}},
+                indent=2,
+            ),
+        ),
+        "Windsurf": ClientSetup(
+            hint="~/.codeium/windsurf/mcp_config.json",
+            language="json",
+            snippet=json.dumps(
+                {"mcpServers": {SERVER_NAME: entry_with_headers({"serverUrl": url}, config.token)}},
+                indent=2,
+            ),
+        ),
+        "Other": ClientSetup(
+            hint="Most other clients take this shape in their own MCP config file",
+            language="json",
+            snippet=client_config_json(config),
+        ),
+    }

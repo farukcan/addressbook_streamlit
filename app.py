@@ -32,13 +32,13 @@ from mcp_server import RunningServer, ServerConfig
 
 DB_PATH: Path = Path(__file__).parent / "contacts.db"
 MCP_STATE_PATH: Path = Path(__file__).parent / "mcp_state.json"
+LOGO_PATH: Path = Path(__file__).parent / "assets" / "logo-128.png"
 FLASH_KEY: str = "flash"
 EDITING_ID_KEY: str = "editing_id"
 PENDING_DELETE_KEY: str = "pending_delete_id"
 EDIT_CLICK_KEY: str = "edit_click"
 DELETE_CLICK_KEY: str = "delete_click"
 ADD_PREFIX: str = "add"
-TABLE_HEIGHT_PX: int = 480
 MCP_DEFAULT_HOST: str = "127.0.0.1"
 MCP_DEFAULT_PORT: int = 8765
 MCP_TOKEN_KEY: str = "mcp_token"
@@ -132,7 +132,8 @@ def render_contact_list(conn: sqlite3.Connection) -> None:
         rows,
         hide_index=True,
         width="stretch",
-        height=TABLE_HEIGHT_PX,
+        # Fits the rows instead of padding the table with empty ones; scrolls past ten.
+        height="auto",
         column_config={
             "id": None,
             "name": "Name",
@@ -296,10 +297,15 @@ def render_mcp_status(handle: McpHandle, running: RunningServer) -> None:
 def render_mcp_help(config: ServerConfig) -> None:
     """Explain how to connect an AI agent to the server."""
     st.subheader("Connect an agent")
-    st.caption("Add this SSE server to an MCP client, for example:")
-    st.code(mcp_server.client_config_json(config), language="json")
-    st.caption("Or with the Claude Code CLI:")
-    st.code(mcp_server.client_cli_command(config), language="bash")
+    setups: dict[str, mcp_server.ClientSetup] = mcp_server.client_setups(config)
+    # No widget key: an auto-keyed radio re-keys when the client list changes, instead of
+    # returning a name that is no longer offered.
+    client: str | None = st.radio("Client", list(setups), horizontal=True, label_visibility="collapsed")
+    if client is None:
+        raise RuntimeError("Client radio returned no selection although clients are listed.")
+    setup: mcp_server.ClientSetup = setups[client]
+    st.caption(setup.hint)
+    st.code(setup.snippet, language=setup.language)
     st.caption(
         "Tools: list_contacts, get_contact, create_contact, update_contact, delete_contact. "
         "The server runs inside this app; it stops when the app exits and starts again with the "
@@ -348,8 +354,9 @@ def render_mcp_tab() -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="Address Book", page_icon="📇", layout="wide")
-    st.title("📇 Address Book")
+    st.set_page_config(page_title="Address Book", page_icon=str(LOGO_PATH), layout="wide")
+    st.logo(str(LOGO_PATH), size="large")
+    st.title("Address Book")
     st.session_state.setdefault(EDITING_ID_KEY, None)
     st.session_state.setdefault(MCP_SETTINGS_KEY, initial_mcp_settings())
     if FLASH_KEY in st.session_state:

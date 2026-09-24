@@ -19,8 +19,11 @@ def app(tmp_path: Path) -> AppTest:
     app run, so it is dropped here to keep the tests independent.
     """
     st.cache_resource.clear()
+    source: Path = Path(__file__).parent
     for name in APP_FILES:
-        shutil.copy(Path(__file__).parent / name, tmp_path / name)
+        shutil.copy(source / name, tmp_path / name)
+    # The app loads its logo from here for the page icon.
+    shutil.copytree(source / "assets", tmp_path / "assets")
     return AppTest.from_file(str(tmp_path / "app.py"), default_timeout=APP_TIMEOUT_SECONDS)
 
 
